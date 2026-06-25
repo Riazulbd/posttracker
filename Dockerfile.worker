@@ -1,0 +1,13 @@
+# ── Scheduler/worker (runs the Mon/Fri scrape via node-cron) ──
+FROM node:20-alpine
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci || npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+
+ENV NODE_ENV=production
+# tsx runs the TypeScript worker directly — no separate build step.
+CMD ["npm", "run", "worker"]

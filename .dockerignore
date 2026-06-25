@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.env
+.env.local
+*.log
+README.md
+Tiktok and IG Post Tracker - Sheet1.csv
+.DS_Store

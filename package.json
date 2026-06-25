@@ -1,0 +1,38 @@
+{
+  "name": "posttracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Social media post tracker — scrapes TikTok & Instagram posts via Apify on a schedule, stores unique posts in Supabase, and shows engagement metrics in a dashboard.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "worker": "tsx src/worker/index.ts",
+    "scrape": "tsx src/scripts/scrape-once.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "apify-client": "^2.9.6",
+    "date-fns": "^3.6.0",
+    "next": "14.2.35",
+    "node-cron": "^3.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/node-cron": "^3.0.11",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

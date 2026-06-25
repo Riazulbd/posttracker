@@ -1,0 +1,27 @@
+# Two services share one codebase and one Supabase database:
+#   - web:    the dashboard (Next.js) on port 3000
+#   - worker: the scheduler that scrapes every Monday & Friday
+#
+# Supabase itself is hosted (not in this compose file). Fill in .env first.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
