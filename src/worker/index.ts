@@ -1,3 +1,4 @@
+import "dotenv/config"; // load .env (no-op in Docker where env is already set)
 import cron from "node-cron";
 import { env } from "../lib/env";
 import { scrapeAllAccounts } from "../lib/scrape";
@@ -16,18 +17,19 @@ async function runScrape(trigger: string) {
     const results = await scrapeAllAccounts();
     const totals = results.reduce(
       (acc, r) => {
-        acc.found += r.found;
+        acc.scanned += r.scanned;
+        acc.matched += r.matched;
         acc.inserted += r.inserted;
         acc.updated += r.updated;
         if (r.error) acc.errors += 1;
         return acc;
       },
-      { found: 0, inserted: 0, updated: 0, errors: 0 }
+      { scanned: 0, matched: 0, inserted: 0, updated: 0, errors: 0 }
     );
     console.table(results);
     console.log(
-      `[worker] scrape done: ${totals.found} found, ${totals.inserted} new, ` +
-        `${totals.updated} updated, ${totals.errors} account error(s)`
+      `[worker] scrape done: ${totals.scanned} scanned, ${totals.matched} on-brand, ` +
+        `${totals.inserted} new, ${totals.updated} updated, ${totals.errors} account error(s)`
     );
   } catch (err) {
     console.error("[worker] scrape failed:", err);

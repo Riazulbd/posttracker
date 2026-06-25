@@ -5,6 +5,7 @@ import {
   runActor,
 } from "./apify";
 import { env } from "./env";
+import { postMatchesKeywords } from "./keywords";
 import { mapItems } from "./mappers";
 import type {
   NormalizedPost,
@@ -39,6 +40,7 @@ async function scrapeAccount(
   account: TrackedAccount
 ): Promise<{
   posts: NormalizedPost[];
+  scanned: number;
   followerCount: number | null;
   followersRefreshed: boolean;
 }> {
@@ -59,18 +61,21 @@ async function scrapeAccount(
 
   const { actorId, input } = buildActorInput(platform, account.username);
   const items = await runActor(actorId, input);
-  const posts = mapItems(platform, items, followerCount, account.username);
+  const allPosts = mapItems(platform, items, followerCount, account.username);
 
   // TikTok items carry the follower count themselves; capture it for caching.
   if (platform === "tiktok") {
-    const fromPost = posts.find((p) => p.follower_count !== null);
+    const fromPost = allPosts.find((p) => p.follower_count !== null);
     if (fromPost?.follower_count != null) {
       followerCount = fromPost.follower_count;
       followersRefreshed = true;
     }
   }
 
-  return { posts, followerCount, followersRefreshed };
+  // Keep only posts that mention a tracked keyword (e.g. the brand handle).
+  const posts = allPosts.filter(postMatchesKeywords);
+
+  return { posts, scanned: allPosts.length, followerCount, followersRefreshed };
 }
 
 /**
@@ -123,14 +128,16 @@ export async function scrapeAllAccounts(): Promise<ScrapeResult[]> {
     const result: ScrapeResult = {
       account: account.username,
       platform: account.platform,
-      found: 0,
+      scanned: 0,
+      matched: 0,
       inserted: 0,
       updated: 0,
     };
     try {
-      const { posts, followerCount, followersRefreshed } =
+      const { posts, scanned, followerCount, followersRefreshed } =
         await scrapeAccount(account);
-      result.found = posts.length;
+      result.scanned = scanned;
+      result.matched = posts.length;
 
       const { inserted, updated } = await persistPosts(posts);
       result.inserted = inserted;

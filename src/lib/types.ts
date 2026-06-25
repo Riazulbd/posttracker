@@ -52,8 +52,9 @@ export interface PostRow extends Omit<NormalizedPost, "raw"> {
 export interface ScrapeResult {
   account: string;
   platform: Platform;
-  found: number;
-  inserted: number;
-  updated: number;
+  scanned: number; // posts returned by the actor
+  matched: number; // posts that mention a tracked keyword
+  inserted: number; // new posts added
+  updated: number; // existing posts whose stats were refreshed
   error?: string;
 }

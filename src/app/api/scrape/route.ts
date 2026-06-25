@@ -30,12 +30,13 @@ export async function POST(req: NextRequest) {
     const results = await scrapeAllAccounts();
     const totals = results.reduce(
       (acc, r) => {
-        acc.found += r.found;
+        acc.scanned += r.scanned;
+        acc.matched += r.matched;
         acc.inserted += r.inserted;
         acc.updated += r.updated;
         return acc;
       },
-      { found: 0, inserted: 0, updated: 0 }
+      { scanned: 0, matched: 0, inserted: 0, updated: 0 }
     );
     return NextResponse.json({ ok: true, totals, results });
   } catch (err) {

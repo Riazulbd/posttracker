@@ -4,6 +4,7 @@
  *
  *   npm run scrape
  */
+import "dotenv/config"; // load .env (no-op in Docker where env is already set)
 import { scrapeAllAccounts } from "../lib/scrape";
 
 async function main() {

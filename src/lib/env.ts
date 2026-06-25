@@ -43,6 +43,13 @@ export const env = {
   // account's follower count when the cached value is older than this many
   // days; otherwise reuse it. Set to 0 to refresh on every run.
   followerRefreshDays: Number(optional("FOLLOWER_REFRESH_DAYS", "7")) || 7,
+  // Only keep posts whose caption/hashtags mention one of these keywords
+  // (comma-separated, matched ignoring case/spaces/punctuation). Leave empty
+  // to keep every post. Default tracks the Arthur's Jewelers campaign.
+  trackKeywords: optional("TRACK_KEYWORDS", "arthursjewelers")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
 
   // Scheduling
   scrapeCron: optional("SCRAPE_CRON", "0 9 * * 1,5"),
