@@ -50,6 +50,11 @@ export async function replaceTrackedKeywords(keywords: string[]): Promise<string
     .delete()
     .lte("created_at", new Date().toISOString());
   if (deleteError) {
+    if ((deleteError as { code?: string }).code === "42P01") {
+      throw new Error(
+        "Keyword storage is not initialized. Run supabase/migrations/0002_tracked_keywords.sql in Supabase first."
+      );
+    }
     throw new Error(`Failed to clear keywords: ${deleteError.message}`);
   }
 
@@ -59,6 +64,11 @@ export async function replaceTrackedKeywords(keywords: string[]): Promise<string
     normalized.map((keyword) => ({ keyword, active: true }))
   );
   if (insertError) {
+    if ((insertError as { code?: string }).code === "42P01") {
+      throw new Error(
+        "Keyword storage is not initialized. Run supabase/migrations/0002_tracked_keywords.sql in Supabase first."
+      );
+    }
     throw new Error(`Failed to save keywords: ${insertError.message}`);
   }
 

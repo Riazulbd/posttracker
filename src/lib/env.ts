@@ -45,8 +45,8 @@ export const env = {
   followerRefreshDays: Number(optional("FOLLOWER_REFRESH_DAYS", "7")) || 7,
   // Only keep posts whose caption/hashtags mention one of these keywords
   // (comma-separated, matched ignoring case/spaces/punctuation). Leave empty
-  // to keep every post. Default tracks the Arthur's Jewelers campaign.
-  trackKeywords: optional("TRACK_KEYWORDS", "arthursjewelers")
+  // to keep every post. Default tracks the current campaign keyword.
+  trackKeywords: optional("TRACK_KEYWORDS", "ChildrensMNPartner")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),

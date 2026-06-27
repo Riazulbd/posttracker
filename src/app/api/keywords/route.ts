@@ -19,9 +19,11 @@ export async function POST(req: NextRequest) {
     const saved = await replaceTrackedKeywords(keywords);
     return NextResponse.json({ ok: true, keywords: saved });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const status = message.includes("Keyword storage is not initialized") ? 503 : 500;
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
+      { ok: false, error: message },
+      { status }
     );
   }
 }

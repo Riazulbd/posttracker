@@ -9,5 +9,5 @@ create table if not exists public.tracked_keywords (
 alter table public.tracked_keywords enable row level security;
 
 insert into public.tracked_keywords (keyword, active)
-values ('arthursjewelers', true)
+values ('ChildrensMNPartner', true)
 on conflict (keyword) do nothing;
