@@ -5,7 +5,7 @@ import {
   runActor,
 } from "./apify";
 import { env } from "./env";
-import { postMatchesKeywords } from "./keywords";
+import { getTrackedKeywords, postMatchesKeywords } from "./keywords";
 import { mapItems } from "./mappers";
 import type {
   NormalizedPost,
@@ -13,6 +13,18 @@ import type {
   ScrapeResult,
   TrackedAccount,
 } from "./types";
+
+export interface ScrapeProgressEvent {
+  current: number;
+  total: number;
+  account: string;
+  platform: Platform;
+  scanned: number;
+  matched: number;
+  inserted: number;
+  updated: number;
+  error?: string;
+}
 
 /** Whether the cached follower count is stale enough to re-fetch. */
 function followersAreStale(account: TrackedAccount): boolean {
@@ -38,6 +50,8 @@ export async function getActiveAccounts(): Promise<TrackedAccount[]> {
 /** Scrape a single account and return its normalized posts + follower count. */
 async function scrapeAccount(
   account: TrackedAccount
+  ,
+  keywords: string[]
 ): Promise<{
   posts: NormalizedPost[];
   scanned: number;
@@ -73,7 +87,7 @@ async function scrapeAccount(
   }
 
   // Keep only posts that mention a tracked keyword (e.g. the brand handle).
-  const posts = allPosts.filter(postMatchesKeywords);
+  const posts = allPosts.filter((post) => postMatchesKeywords(post, keywords));
 
   return { posts, scanned: allPosts.length, followerCount, followersRefreshed };
 }
@@ -119,12 +133,26 @@ async function persistPosts(
 }
 
 /** Scrape every active account and persist the results. */
-export async function scrapeAllAccounts(): Promise<ScrapeResult[]> {
+export async function scrapeAllAccounts(
+  onProgress?: (event: ScrapeProgressEvent) => void
+): Promise<ScrapeResult[]> {
   const accounts = await getActiveAccounts();
+  const keywords = await getTrackedKeywords();
   const supabase = getSupabaseAdmin();
   const results: ScrapeResult[] = [];
 
-  for (const account of accounts) {
+  onProgress?.({
+    current: 0,
+    total: accounts.length,
+    account: "",
+    platform: "instagram",
+    scanned: 0,
+    matched: 0,
+    inserted: 0,
+    updated: 0,
+  });
+
+  for (const [index, account] of accounts.entries()) {
     const result: ScrapeResult = {
       account: account.username,
       platform: account.platform,
@@ -135,7 +163,7 @@ export async function scrapeAllAccounts(): Promise<ScrapeResult[]> {
     };
     try {
       const { posts, scanned, followerCount, followersRefreshed } =
-        await scrapeAccount(account);
+        await scrapeAccount(account, keywords);
       result.scanned = scanned;
       result.matched = posts.length;
 
@@ -159,6 +187,17 @@ export async function scrapeAllAccounts(): Promise<ScrapeResult[]> {
       console.error(`[scrape] ${account.platform}/${account.username}:`, result.error);
     }
     results.push(result);
+    onProgress?.({
+      current: index + 1,
+      total: accounts.length,
+      account: account.username,
+      platform: account.platform,
+      scanned: result.scanned,
+      matched: result.matched,
+      inserted: result.inserted,
+      updated: result.updated,
+      error: result.error,
+    });
   }
 
   return results;

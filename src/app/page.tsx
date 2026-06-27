@@ -2,6 +2,9 @@ import { getDashboardData } from "./data";
 import { SummaryCards } from "./components/SummaryCards";
 import { Filters } from "./components/Filters";
 import { PostsTable } from "./components/PostsTable";
+import { ScrapeControls } from "./components/ScrapeControls";
+import { getTrackedKeywords } from "@/lib/keywords";
+import { createDashboardToken } from "@/lib/auth";
 
 // Always render fresh data from Supabase.
 export const dynamic = "force-dynamic";
@@ -19,11 +22,18 @@ export default async function DashboardPage({
 
   let content;
   try {
-    const { posts, accounts, summary } = await getDashboardData(filters);
+    const [{ posts, accounts, summary }, keywords] = await Promise.all([
+      getDashboardData(filters),
+      getTrackedKeywords(),
+    ]);
+    const dashboardToken = createDashboardToken();
     content = (
       <>
         <SummaryCards summary={summary} />
-        <Filters accounts={accounts} current={filters} />
+        <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
+          <Filters accounts={accounts} current={filters} />
+          <ScrapeControls initialKeywords={keywords} authToken={dashboardToken} />
+        </div>
         <PostsTable posts={posts} />
       </>
     );

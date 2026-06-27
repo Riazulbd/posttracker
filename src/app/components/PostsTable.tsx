@@ -21,8 +21,8 @@ export function PostsTable({ posts }: { posts: PostRow[] }) {
   if (posts.length === 0) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-        No posts yet. Run a scrape (worker on Mon/Fri, or{" "}
-        <code className="rounded bg-slate-100 px-1">npm run scrape</code>) to
+        No posts yet. Use the{" "}
+        <span className="font-medium text-slate-700">Scrape now</span> button to
         populate the table.
       </div>
     );
