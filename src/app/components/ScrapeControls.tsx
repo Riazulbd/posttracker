@@ -30,6 +30,17 @@ function normalizeKeyword(value: string): string {
   return value.trim();
 }
 
+function dedupeKeywords(values: string[]): string[] {
+  return [
+    ...new Map(
+      values
+        .map(normalizeKeyword)
+        .filter(Boolean)
+        .map((value) => [value.toLowerCase().replace(/[^a-z0-9]/g, ""), value] as const)
+    ).values(),
+  ];
+}
+
 async function readNdjson(
   response: Response,
   onEvent: (event: StreamEvent) => void
@@ -120,7 +131,7 @@ export function ScrapeControls({
 
   async function onSave() {
     try {
-      await saveKeywords(keywords);
+      await saveKeywords(dedupeKeywords([...keywords, draft]));
       setDraft("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -180,9 +191,7 @@ export function ScrapeControls({
   function addKeyword() {
     const value = normalizeKeyword(draft);
     if (!value) return;
-    setKeywords((current) =>
-      Array.from(new Set([...current, value]))
-    );
+    setKeywords((current) => dedupeKeywords([...current, value]));
     setDraft("");
   }
 
