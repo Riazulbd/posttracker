@@ -1,4 +1,5 @@
 import { scrapeAllAccounts, type ScrapeProgressEvent } from "./scrape";
+import { getSupabaseAdmin } from "./supabase";
 import type { ScrapeResult } from "./types";
 
 export type ScrapeJobState = "idle" | "running" | "done" | "error";
@@ -54,6 +55,67 @@ function snapshot(status: ScrapeJobStatus): ScrapeJobStatus {
   };
 }
 
+async function persistStatus(status: ScrapeJobStatus): Promise<void> {
+  try {
+    await getSupabaseAdmin()
+      .from("scrape_state")
+      .upsert({
+        id: "current",
+        status,
+        updated_at: new Date().toISOString(),
+      });
+  } catch {
+    // The app can still show in-process progress if the optional table is absent.
+  }
+}
+
+function coerceStatus(value: unknown): ScrapeJobStatus | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<ScrapeJobStatus>;
+  if (
+    candidate.state !== "idle" &&
+    candidate.state !== "running" &&
+    candidate.state !== "done" &&
+    candidate.state !== "error"
+  ) {
+    return null;
+  }
+  return {
+    ...emptyStatus(),
+    ...candidate,
+    results: Array.isArray(candidate.results) ? candidate.results : [],
+  };
+}
+
+async function readPersistedStatus(): Promise<ScrapeJobStatus | null> {
+  try {
+    const { data, error } = await getSupabaseAdmin()
+      .from("scrape_state")
+      .select("status, updated_at")
+      .eq("id", "current")
+      .maybeSingle();
+    if (error || !data) return null;
+
+    const persisted = coerceStatus((data as { status?: unknown }).status);
+    if (!persisted) return null;
+
+    const updatedAt = new Date(String((data as { updated_at?: string }).updated_at));
+    const staleMs = Date.now() - updatedAt.getTime();
+    if (persisted.state === "running" && staleMs > 15 * 60 * 1000) {
+      return {
+        ...persisted,
+        state: "error",
+        finishedAt: new Date().toISOString(),
+        error: "The previous scrape stopped reporting progress. Start a new scrape.",
+      };
+    }
+
+    return persisted;
+  } catch {
+    return null;
+  }
+}
+
 function applyProgress(status: ScrapeJobStatus, event: ScrapeProgressEvent) {
   const previous = status.results.find((result) => result.account === event.account);
   status.current = event.current;
@@ -92,22 +154,32 @@ function applyProgress(status: ScrapeJobStatus, event: ScrapeProgressEvent) {
   }
 }
 
-export function getScrapeJobStatus(): ScrapeJobStatus {
-  return snapshot(statusRef());
+export async function getScrapeJobStatus(): Promise<ScrapeJobStatus> {
+  const memoryStatus = statusRef();
+  if (memoryStatus.state === "running") return snapshot(memoryStatus);
+
+  const persisted = await readPersistedStatus();
+  return persisted ?? snapshot(memoryStatus);
 }
 
-export function startScrapeJob(): ScrapeJobStatus {
+export async function startScrapeJob(): Promise<ScrapeJobStatus> {
+  const current = await getScrapeJobStatus();
+  if (current.state === "running") return current;
+
   const status = statusRef();
-  if (status.state === "running") return snapshot(status);
 
   Object.assign(status, emptyStatus(), {
     state: "running",
     startedAt: new Date().toISOString(),
   } satisfies Partial<ScrapeJobStatus>);
+  void persistStatus(snapshot(status));
 
   void (async () => {
     try {
-      const results = await scrapeAllAccounts((event) => applyProgress(status, event));
+      const results = await scrapeAllAccounts((event) => {
+        applyProgress(status, event);
+        void persistStatus(snapshot(status));
+      });
       status.results = results;
       status.scanned = results.reduce((sum, result) => sum + result.scanned, 0);
       status.matched = results.reduce((sum, result) => sum + result.matched, 0);
@@ -124,6 +196,7 @@ export function startScrapeJob(): ScrapeJobStatus {
       status.error = err instanceof Error ? err.message : String(err);
     } finally {
       status.finishedAt = new Date().toISOString();
+      void persistStatus(snapshot(status));
     }
   })();
 

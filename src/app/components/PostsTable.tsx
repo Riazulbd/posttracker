@@ -5,10 +5,14 @@ function PlatformBadge({ platform }: { platform: string }) {
   const styles =
     platform === "instagram"
       ? "bg-pink-100 text-pink-700"
-      : "bg-slate-900 text-white";
+      : platform === "facebook"
+        ? "bg-blue-100 text-blue-700"
+        : "bg-slate-900 text-white";
+  const label =
+    platform === "instagram" ? "IG" : platform === "facebook" ? "FB" : "TT";
   return (
     <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${styles}`}>
-      {platform === "instagram" ? "IG" : "TT"}
+      {label}
     </span>
   );
 }

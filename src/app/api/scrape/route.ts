@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return NextResponse.json({ ok: true, status: getScrapeJobStatus() });
+  return NextResponse.json({ ok: true, status: await getScrapeJobStatus() });
 }
 
 export async function POST(req: NextRequest) {
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const status = startScrapeJob();
+  const status = await startScrapeJob();
   return NextResponse.json(
     {
       ok: true,

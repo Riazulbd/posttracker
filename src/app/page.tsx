@@ -28,7 +28,7 @@ export default async function DashboardPage({
       getTrackedKeywords(),
     ]);
     const dashboardToken = createDashboardToken();
-    const scrapeStatus = getScrapeJobStatus();
+    const scrapeStatus = await getScrapeJobStatus();
     content = (
       <>
         <SummaryCards summary={summary} />

@@ -52,8 +52,8 @@ export async function fetchInstagramFollowers(
 
 /**
  * Build the actor input for an account. These inputs target the default
- * actors (apify/instagram-post-scraper and clockworks/tiktok-scraper). If you
- * swap actors, adjust the input shape here and the field mapping in
+ * actors (apify/instagram-post-scraper, clockworks/tiktok-scraper, and
+ * apify/facebook-posts-scraper). If you swap actors, adjust the input shape here and the field mapping in
  * mappers.ts.
  */
 export function buildActorInput(
@@ -74,7 +74,17 @@ export function buildActorInput(
     };
   }
 
-  // tiktok
+  if (platform === "facebook") {
+    return {
+      actorId: env.facebookActor,
+      input: {
+        captionText: false,
+        resultsLimit: env.facebookResultsLimit,
+        startUrls: [{ url: username }],
+      },
+    };
+  }
+
   return {
     actorId: env.tiktokActor,
     input: {

@@ -36,9 +36,11 @@ export const env = {
     "apify/instagram-profile-scraper"
   ),
   tiktokActor: optional("APIFY_TIKTOK_ACTOR", "clockworks/tiktok-scraper"),
+  facebookActor: optional("APIFY_FACEBOOK_ACTOR", "apify/facebook-posts-scraper"),
   // Posts pulled per account per run. Apify charges per post (~$1.70/1000),
   // so keep this low — accounts rarely post >10 times between Mon and Fri.
   resultsLimit: Number(optional("APIFY_RESULTS_LIMIT", "10")) || 10,
+  facebookResultsLimit: Number(optional("APIFY_FACEBOOK_RESULTS_LIMIT", "20")) || 20,
   // The IG profile scraper is pricey (~$2.60/100 profiles). Only refresh an
   // account's follower count when the cached value is older than this many
   // days; otherwise reuse it. Set to 0 to refresh on every run.

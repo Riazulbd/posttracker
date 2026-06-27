@@ -2,7 +2,7 @@
 
 Self-hosted replacement for the "TikTok & IG Post Tracker" Google Sheet.
 
-It scrapes Instagram & TikTok posts with **Apify**, stores **only new/unique
+It scrapes Instagram, Facebook & TikTok posts with **Apify**, stores **only new/unique
 posts** in **Supabase** (existing posts get their stats refreshed), computes the
 engagement metrics, and shows everything in a web dashboard. A worker runs the
 scrape automatically **every Monday & Friday**.
@@ -64,10 +64,11 @@ The seeded accounts (edit the `tracked_accounts` table any time to add/remove):
 
 ## 2. Apify setup
 
-Uses three actors (override via env if you prefer others):
+Uses four actors (override via env if you prefer others):
 
 - `apify/instagram-post-scraper` — posts for each Instagram account
 - `apify/instagram-profile-scraper` — follower counts (needed for engagement rate)
+- `apify/facebook-posts-scraper` — posts for each Facebook profile/page URL
 - `clockworks/tiktok-scraper` — TikTok posts (only if you add TikTok accounts)
 
 Grab your API token from

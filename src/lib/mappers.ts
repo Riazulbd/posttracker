@@ -144,6 +144,62 @@ function mapTiktok(item: Raw, fallbackFollowers: number | null): NormalizedPost 
   };
 }
 
+function mapFacebook(item: Raw, fallbackFollowers: number | null): NormalizedPost | null {
+  const post_url = toText(
+    pick(item, ["url", "postUrl", "facebookUrl", "permalinkUrl", "post_url"])
+  );
+  if (!post_url) return null;
+
+  const caption = toText(
+    pick(item, ["text", "message", "description", "caption", "postText"])
+  );
+
+  return {
+    post_url,
+    platform: "facebook",
+    influencer_name:
+      toText(
+        pick(item, [
+          "pageName",
+          "profileName",
+          "authorName",
+          "user.name",
+          "from.name",
+          "owner.name",
+        ])
+      ) ?? "",
+    caption,
+    post_type: toText(pick(item, ["type", "mediaType", "postType"])) ?? "Post",
+    hashtags: extractHashtags(item, caption),
+    video_plays: toNumber(
+      pick(item, ["videoViewCount", "viewCount", "viewsCount", "statistics.views"])
+    ),
+    follower_count: fallbackFollowers,
+    comments_count: toNumber(
+      pick(item, ["comments", "commentsCount", "commentCount", "statistics.comments"])
+    ),
+    share_count: toNumber(
+      pick(item, ["shares", "sharesCount", "shareCount", "statistics.shares"])
+    ),
+    likes: toNumber(
+      pick(item, [
+        "likes",
+        "likesCount",
+        "likeCount",
+        "reactionsCount",
+        "reactionCount",
+        "statistics.likes",
+        "statistics.reactions",
+      ])
+    ),
+    post_date: toIsoDate(
+      pick(item, ["time", "timestamp", "date", "createdAt", "created_time"])
+    ),
+    data_date: toIsoDate(Date.now()),
+    raw: item,
+  };
+}
+
 export function mapItems(
   platform: Platform,
   items: Raw[],
@@ -154,7 +210,9 @@ export function mapItems(
     .map((item) =>
       platform === "instagram"
         ? mapInstagram(item, fallbackFollowers)
-        : mapTiktok(item, fallbackFollowers)
+        : platform === "facebook"
+          ? mapFacebook(item, fallbackFollowers)
+          : mapTiktok(item, fallbackFollowers)
     )
     .filter((p): p is NormalizedPost => p !== null && Boolean(p.post_url));
 

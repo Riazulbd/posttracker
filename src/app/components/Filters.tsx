@@ -42,6 +42,7 @@ export function Filters({
           <option value="all">All</option>
           <option value="instagram">Instagram</option>
           <option value="tiktok">TikTok</option>
+          <option value="facebook">Facebook</option>
         </select>
       </label>
 
