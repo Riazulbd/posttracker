@@ -86,7 +86,9 @@ function mapInstagram(item: Raw, fallbackFollowers: number | null): NormalizedPo
   const post_url = toText(pick(item, ["url", "postUrl", "inputUrl"]));
   if (!post_url) return null;
 
-  const caption = toText(pick(item, ["caption", "text"]));
+  const caption = toText(
+    pick(item, ["caption", "description", "text", "edge_media_to_caption.edges.0.node.text"])
+  );
   const followers =
     toNumber(pick(item, ["followersCount", "ownerFollowersCount", "owner.followersCount"])) ??
     fallbackFollowers;
@@ -118,7 +120,7 @@ function mapTiktok(item: Raw, fallbackFollowers: number | null): NormalizedPost 
   );
   if (!post_url) return null;
 
-  const caption = toText(pick(item, ["text", "desc", "caption"]));
+  const caption = toText(pick(item, ["text", "desc", "description", "caption"]));
   const followers =
     toNumber(pick(item, ["authorMeta.fans", "authorMeta.followers", "fans"])) ??
     fallbackFollowers;

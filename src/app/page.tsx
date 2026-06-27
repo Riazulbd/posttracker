@@ -5,6 +5,7 @@ import { PostsTable } from "./components/PostsTable";
 import { ScrapeControls } from "./components/ScrapeControls";
 import { getTrackedKeywords } from "@/lib/keywords";
 import { createDashboardToken } from "@/lib/auth";
+import { getScrapeJobStatus } from "@/lib/scrape-job";
 
 // Always render fresh data from Supabase.
 export const dynamic = "force-dynamic";
@@ -27,12 +28,17 @@ export default async function DashboardPage({
       getTrackedKeywords(),
     ]);
     const dashboardToken = createDashboardToken();
+    const scrapeStatus = getScrapeJobStatus();
     content = (
       <>
         <SummaryCards summary={summary} />
         <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
           <Filters accounts={accounts} current={filters} />
-          <ScrapeControls initialKeywords={keywords} authToken={dashboardToken} />
+          <ScrapeControls
+            initialKeywords={keywords}
+            initialStatus={scrapeStatus}
+            authToken={dashboardToken}
+          />
         </div>
         <PostsTable posts={posts} />
       </>

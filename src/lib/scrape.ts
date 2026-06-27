@@ -49,8 +49,7 @@ export async function getActiveAccounts(): Promise<TrackedAccount[]> {
 
 /** Scrape a single account and return its normalized posts + follower count. */
 async function scrapeAccount(
-  account: TrackedAccount
-  ,
+  account: TrackedAccount,
   keywords: string[]
 ): Promise<{
   posts: NormalizedPost[];

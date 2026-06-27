@@ -1,30 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
-type ScrapeTotals = {
-  scanned: number;
-  matched: number;
-  inserted: number;
-  updated: number;
-};
-
-type StreamEvent =
-  | { type: "status"; message: string }
-  | {
-      type: "progress";
-      current: number;
-      total: number;
-      account: string;
-      platform: string;
-      scanned: number;
-      matched: number;
-      inserted: number;
-      updated: number;
-      error?: string;
-    }
-  | { type: "done"; totals: ScrapeTotals; results: unknown[] }
-  | { type: "error"; error: string };
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { ScrapeJobStatus } from "@/lib/scrape-job";
 
 function normalizeKeyword(value: string): string {
   return value.trim();
@@ -36,70 +14,122 @@ function dedupeKeywords(values: string[]): string[] {
       values
         .map(normalizeKeyword)
         .filter(Boolean)
-        .map((value) => [value.toLowerCase().replace(/[^a-z0-9]/g, ""), value] as const)
+        .map((value) => [
+          value.toLowerCase().replace(/[^a-z0-9]/g, ""),
+          value,
+        ] as const)
     ).values(),
   ];
 }
 
-async function readNdjson(
-  response: Response,
-  onEvent: (event: StreamEvent) => void
-): Promise<void> {
-  if (!response.body) {
-    throw new Error("Scrape response did not include a stream.");
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? "";
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      onEvent(JSON.parse(line) as StreamEvent);
-    }
-
-    if (done) break;
-  }
-
-  if (buffer.trim()) {
-    onEvent(JSON.parse(buffer) as StreamEvent);
-  }
-}
-
 export function ScrapeControls({
   initialKeywords,
+  initialStatus,
   authToken,
 }: {
   initialKeywords: string[];
+  initialStatus: ScrapeJobStatus;
   authToken: string | null;
 }) {
+  const router = useRouter();
   const [keywords, setKeywords] = useState(initialKeywords);
   const [draft, setDraft] = useState("");
-  const [status, setStatus] = useState("Ready to scrape.");
-  const [progress, setProgress] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState(initialStatus);
+  const [message, setMessage] = useState(
+    initialStatus.state === "running" ? "Scrape is running." : "Ready to scrape."
+  );
+  const [error, setError] = useState<string | null>(initialStatus.error);
   const [saved, setSaved] = useState<string | null>(null);
 
-  const authHeaders: HeadersInit = authToken
-    ? { "Content-Type": "application/json", "x-dashboard-token": authToken }
-    : { "Content-Type": "application/json" };
+  const authHeaders: HeadersInit = useMemo(() => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (authToken) headers["x-dashboard-token"] = authToken;
+    return headers;
+  }, [authToken]);
+
+  const running = status.state === "running";
+  const progress =
+    status.total > 0 ? Math.min(100, (status.current / status.total) * 100) : 0;
 
   const progressLabel = useMemo(() => {
-    if (running && total > 0) {
-      return `${Math.min(total, Math.round((progress / 100) * total))} / ${total} accounts`;
+    if (running && status.total > 0) {
+      return `${status.current} / ${status.total} accounts`;
     }
-    if (running) return "Starting…";
-    if (total > 0) return `${total} accounts processed`;
+    if (running) return "Starting...";
+    if (status.total > 0) return `${status.total} accounts processed`;
     return "No scrape yet";
-  }, [progress, running, total]);
+  }, [running, status.current, status.total]);
+
+  const statusLine = useMemo(() => {
+    if (running && status.account) return `Scraping ${status.account}...`;
+    if (running) return "Scrape is running.";
+    if (status.state === "done") {
+      return `Done: ${status.scanned} scanned, ${status.matched} matched, ${status.inserted} inserted, ${status.updated} updated.`;
+    }
+    if (status.state === "error") return status.error ?? "Scrape finished with errors.";
+    return message;
+  }, [message, running, status]);
+
+  async function fetchScrapeStatus(): Promise<ScrapeJobStatus> {
+    const response = await fetch("/api/scrape", {
+      method: "GET",
+      headers: authHeaders,
+      cache: "no-store",
+    });
+    const data = (await response.json()) as
+      | { ok: true; status: ScrapeJobStatus }
+      | { ok: false; error?: string };
+
+    if (!response.ok || !data.ok) {
+      const responseError =
+        "error" in data && data.error
+          ? data.error
+          : `Scrape status failed with status ${response.status}`;
+      throw new Error(responseError);
+    }
+
+    return data.status;
+  }
+
+  useEffect(() => {
+    if (!running) return;
+
+    let stopped = false;
+    let previousKey = `${status.current}:${status.inserted}:${status.updated}:${status.matched}`;
+
+    const poll = async () => {
+      try {
+        const nextStatus = await fetchScrapeStatus();
+        if (stopped) return;
+
+        const nextKey = `${nextStatus.current}:${nextStatus.inserted}:${nextStatus.updated}:${nextStatus.matched}`;
+        setStatus(nextStatus);
+        if (nextKey !== previousKey || nextStatus.state !== "running") {
+          previousKey = nextKey;
+          router.refresh();
+        }
+        if (nextStatus.error) setError(nextStatus.error);
+      } catch (err) {
+        if (!stopped) setError(err instanceof Error ? err.message : String(err));
+      }
+    };
+
+    void poll();
+    const interval = window.setInterval(() => void poll(), 2500);
+    return () => {
+      stopped = true;
+      window.clearInterval(interval);
+    };
+  }, [
+    running,
+    router,
+    status.current,
+    status.inserted,
+    status.matched,
+    status.updated,
+  ]);
 
   async function saveKeywords(nextKeywords: string[]) {
     setError(null);
@@ -117,11 +147,9 @@ export function ScrapeControls({
 
     if (!response.ok || !data.ok) {
       const message =
-        !response.ok
-          ? `Failed to save keywords (${response.status})`
-          : "error" in data && data.error
-            ? data.error
-            : "Save failed";
+        "error" in data && data.error
+          ? data.error
+          : `Failed to save keywords (${response.status})`;
       throw new Error(message);
     }
 
@@ -139,52 +167,32 @@ export function ScrapeControls({
   }
 
   async function onScrape() {
-    setRunning(true);
-    setProgress(0);
-    setTotal(0);
     setError(null);
     setSaved(null);
-    setStatus("Starting scrape…");
+    setMessage("Starting scrape...");
 
     try {
       const response = await fetch("/api/scrape", {
         method: "POST",
         headers: authHeaders,
       });
+      const data = (await response.json()) as
+        | { ok: true; status: ScrapeJobStatus }
+        | { ok: false; error?: string };
 
-      if (!response.ok) {
-        throw new Error(`Scrape request failed with status ${response.status}`);
+      if (!response.ok || !data.ok) {
+        const responseError =
+          "error" in data && data.error
+            ? data.error
+            : `Scrape request failed with status ${response.status}`;
+        throw new Error(responseError);
       }
 
-      await readNdjson(response, (event) => {
-        if (event.type === "status") {
-          setStatus(event.message);
-        } else if (event.type === "progress") {
-          setTotal(event.total);
-          const pct = event.total > 0 ? (event.current / event.total) * 100 : 0;
-          setProgress(Math.min(100, Math.max(0, pct)));
-          setStatus(
-            event.error
-              ? `${event.account} finished with an error`
-              : `${event.account} (${event.current}/${event.total})`
-          );
-          if (event.error) {
-            setError(event.error);
-          }
-        } else if (event.type === "done") {
-          setProgress(100);
-          setStatus(
-            `Done: ${event.totals.scanned} scanned, ${event.totals.matched} matched, ${event.totals.inserted} inserted, ${event.totals.updated} updated.`
-          );
-        } else if (event.type === "error") {
-          throw new Error(event.error);
-        }
-      });
+      setStatus(data.status);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setStatus("Scrape failed.");
-    } finally {
-      setRunning(false);
+      setMessage("Scrape failed.");
     }
   }
 
@@ -214,19 +222,19 @@ export function ScrapeControls({
           disabled={running}
           className="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {running ? "Scraping…" : "Scrape now"}
+          {running ? "Scraping..." : "Scrape now"}
         </button>
       </div>
 
       <div className="mt-4 space-y-2">
         <div className="flex items-center justify-between text-xs text-slate-500">
-          <span>{status}</span>
+          <span>{statusLine}</span>
           <span>{progressLabel}</span>
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-slate-100">
           <div
             className="h-full rounded-full bg-brand transition-all duration-300"
-            style={{ width: `${running || progress === 100 ? progress : 0}%` }}
+            style={{ width: `${running || status.state === "done" ? progress : 0}%` }}
           />
         </div>
       </div>
@@ -273,7 +281,7 @@ export function ScrapeControls({
                   className="text-slate-400 hover:text-slate-700"
                   aria-label={`Remove ${keyword}`}
                 >
-                  ×
+                  x
                 </button>
               </span>
             ))
