@@ -55,6 +55,19 @@ function snapshot(status: ScrapeJobStatus): ScrapeJobStatus {
   };
 }
 
+function finishCompletedRunningStatus(status: ScrapeJobStatus): ScrapeJobStatus {
+  const hasError = Boolean(status.error) || status.results.some((result) => result.error);
+
+  return {
+    ...status,
+    state: hasError ? "error" : "done",
+    finishedAt: status.finishedAt ?? new Date().toISOString(),
+    error:
+      status.error ??
+      (hasError ? "One or more accounts failed to scrape." : null),
+  };
+}
+
 async function persistStatus(status: ScrapeJobStatus): Promise<void> {
   try {
     await getSupabaseAdmin()
@@ -101,13 +114,25 @@ async function readPersistedStatus(): Promise<ScrapeJobStatus | null> {
 
     const updatedAt = new Date(String((data as { updated_at?: string }).updated_at));
     const staleMs = Date.now() - updatedAt.getTime();
+    if (
+      persisted.state === "running" &&
+      persisted.total > 0 &&
+      persisted.current >= persisted.total
+    ) {
+      const repaired = finishCompletedRunningStatus(persisted);
+      void persistStatus(repaired);
+      return repaired;
+    }
+
     if (persisted.state === "running" && staleMs > 15 * 60 * 1000) {
-      return {
+      const stalled = {
         ...persisted,
         state: "error",
         finishedAt: new Date().toISOString(),
         error: "The previous scrape stopped reporting progress. Start a new scrape.",
-      };
+      } satisfies ScrapeJobStatus;
+      void persistStatus(stalled);
+      return stalled;
     }
 
     return persisted;
@@ -172,7 +197,7 @@ export async function startScrapeJob(): Promise<ScrapeJobStatus> {
     state: "running",
     startedAt: new Date().toISOString(),
   } satisfies Partial<ScrapeJobStatus>);
-  void persistStatus(snapshot(status));
+  await persistStatus(snapshot(status));
 
   void (async () => {
     try {
@@ -196,7 +221,7 @@ export async function startScrapeJob(): Promise<ScrapeJobStatus> {
       status.error = err instanceof Error ? err.message : String(err);
     } finally {
       status.finishedAt = new Date().toISOString();
-      void persistStatus(snapshot(status));
+      await persistStatus(snapshot(status));
     }
   })();
 

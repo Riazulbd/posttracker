@@ -160,11 +160,11 @@ function mapFacebook(item: Raw, fallbackFollowers: number | null): NormalizedPos
     influencer_name:
       toText(
         pick(item, [
-          "pageName",
-          "profileName",
-          "authorName",
           "user.name",
           "from.name",
+          "authorName",
+          "profileName",
+          "pageName",
           "owner.name",
         ])
       ) ?? "",
@@ -186,6 +186,7 @@ function mapFacebook(item: Raw, fallbackFollowers: number | null): NormalizedPos
         "likes",
         "likesCount",
         "likeCount",
+        "reactionLikeCount",
         "reactionsCount",
         "reactionCount",
         "statistics.likes",

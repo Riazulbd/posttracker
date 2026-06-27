@@ -17,7 +17,14 @@ export async function runActor(
   actorId: string,
   input: Record<string, unknown>
 ): Promise<Record<string, unknown>[]> {
-  const run = await getClient().actor(actorId).call(input);
+  const run = await getClient()
+    .actor(actorId)
+    .call(input, { waitSecs: env.actorWaitSecs });
+  if (run.status !== "SUCCEEDED") {
+    throw new Error(
+      `Apify actor ${actorId} did not finish within ${env.actorWaitSecs}s (status: ${run.status}).`
+    );
+  }
   if (!run.defaultDatasetId) return [];
   const { items } = await getClient()
     .dataset(run.defaultDatasetId)
