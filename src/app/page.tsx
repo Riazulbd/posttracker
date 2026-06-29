@@ -2,6 +2,7 @@ import { getDashboardData } from "./data";
 import { SummaryCards } from "./components/SummaryCards";
 import { Filters } from "./components/Filters";
 import { PostsTable } from "./components/PostsTable";
+import { DataAnalysis } from "./components/DataAnalysis";
 import { ScrapeControls } from "./components/ScrapeControls";
 import { getTrackedKeywords } from "@/lib/keywords";
 import { createDashboardToken } from "@/lib/auth";
@@ -40,6 +41,7 @@ export default async function DashboardPage({
             authToken={dashboardToken}
           />
         </div>
+        <DataAnalysis posts={posts} />
         <PostsTable posts={posts} />
       </>
     );
