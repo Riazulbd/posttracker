@@ -144,10 +144,43 @@ function mapTiktok(item: Raw, fallbackFollowers: number | null): NormalizedPost 
   };
 }
 
-function mapFacebook(item: Raw, fallbackFollowers: number | null): NormalizedPost | null {
-  const post_url = toText(
-    pick(item, ["url", "postUrl", "facebookUrl", "permalinkUrl", "post_url"])
+/**
+ * Facebook's permalink carries a `story_fbid=pfbid...` token that ROTATES
+ * between scrapes for the same post, so the raw permalink is not a stable
+ * dedup key. Build a canonical URL from the stable numeric `postId` instead
+ * (falling back to the raw URL only when no postId is available).
+ */
+function facebookStableUrl(item: Raw): string | null {
+  const postId = toText(pick(item, ["postId", "post_id", "topLevelPostId"]));
+  const rawUrl = toText(
+    pick(item, [
+      "url",
+      "postUrl",
+      "facebookUrl",
+      "permalinkUrl",
+      "topLevelUrl",
+      "post_url",
+    ])
   );
+
+  let pageId = toText(pick(item, ["pageId", "user.id"]));
+  if (!pageId && rawUrl) {
+    try {
+      pageId = new URL(rawUrl).searchParams.get("id");
+    } catch {
+      /* not a parseable URL */
+    }
+  }
+
+  if (postId && pageId) {
+    return `https://www.facebook.com/permalink.php?story_fbid=${postId}&id=${pageId}`;
+  }
+  if (postId) return `https://www.facebook.com/${postId}`;
+  return rawUrl;
+}
+
+function mapFacebook(item: Raw, fallbackFollowers: number | null): NormalizedPost | null {
+  const post_url = facebookStableUrl(item);
   if (!post_url) return null;
 
   const caption = toText(
