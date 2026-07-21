@@ -1,200 +1,246 @@
 import { formatCompact, formatPercent } from "@/lib/format";
 import type { PostRow } from "@/lib/types";
 
-// A distinct, repeating multicolor palette for breakdown segments.
-const PALETTE = [
-  "#6d28d9", // violet (brand)
-  "#2563eb", // blue
-  "#059669", // emerald
-  "#d97706", // amber
-  "#dc2626", // red
-  "#db2777", // pink
-  "#0891b2", // cyan
-  "#7c3aed", // purple
-  "#65a30d", // lime
-  "#ea580c", // orange
-  "#0d9488", // teal
-  "#4f46e5", // indigo
+// Validated categorical palette (dataviz skill, light surface), fixed order.
+const SERIES = [
+  "#2a78d6", // blue
+  "#008300", // green
+  "#e87ba4", // magenta
+  "#eda100", // yellow
+  "#1baf7a", // aqua
+  "#eb6834", // orange
+  "#4a3aa7", // violet
+  "#e34948", // red
 ];
+const OTHER = "#898781"; // muted gray for the folded tail
 
-interface Segment {
+const PLATFORM = {
+  instagram: { label: "Instagram", color: "#e87ba4" },
+  facebook: { label: "Facebook", color: "#2a78d6" },
+  tiktok: { label: "TikTok", color: "#4a3aa7" },
+} as const;
+
+interface Row {
   label: string;
   value: number;
+  count: number;
   color: string;
-  meta?: string;
 }
 
-/** Sum `value` per key, sort desc, color each, and group the long tail. */
+/** Sum `value` per key, sort desc, color by rank, fold the tail into "Other". */
 function aggregate(
   posts: PostRow[],
   keyOf: (p: PostRow) => string,
-  valueOf: (p: PostRow) => number,
-  topN = 10
-): Segment[] {
+  colorOf: ((key: string, rank: number) => string) | null,
+  topN = 8
+): Row[] {
   const totals = new Map<string, { value: number; count: number }>();
   for (const p of posts) {
     const key = keyOf(p) || "—";
     const entry = totals.get(key) ?? { value: 0, count: 0 };
-    entry.value += valueOf(p) || 0;
+    entry.value += p.total_interactions ?? 0;
     entry.count += 1;
     totals.set(key, entry);
   }
 
   const sorted = [...totals.entries()].sort((a, b) => b[1].value - a[1].value);
-  const head = sorted.slice(0, topN);
-  const tail = sorted.slice(topN);
-
-  const segments: Segment[] = head.map(([label, { value, count }], i) => ({
+  const rows: Row[] = sorted.slice(0, topN).map(([label, v], i) => ({
     label,
-    value,
-    color: PALETTE[i % PALETTE.length],
-    meta: `${count} post${count === 1 ? "" : "s"}`,
+    value: v.value,
+    count: v.count,
+    color: colorOf ? colorOf(label, i) : SERIES[i % SERIES.length],
   }));
 
+  const tail = sorted.slice(topN);
   if (tail.length > 0) {
-    const value = tail.reduce((s, [, v]) => s + v.value, 0);
-    const count = tail.reduce((s, [, v]) => s + v.count, 0);
-    segments.push({
+    rows.push({
       label: `Other (${tail.length})`,
-      value,
-      color: "#94a3b8", // slate-400
-      meta: `${count} posts`,
+      value: tail.reduce((s, [, v]) => s + v.value, 0),
+      count: tail.reduce((s, [, v]) => s + v.count, 0),
+      color: OTHER,
     });
   }
-  return segments;
+  return rows;
 }
 
-const PLATFORM_LABELS: Record<string, string> = {
-  instagram: "Instagram",
-  facebook: "Facebook",
-  tiktok: "TikTok",
-};
-
-function BreakdownBar({
+function Panel({
   title,
   subtitle,
-  segments,
+  children,
 }: {
   title: string;
   subtitle: string;
-  segments: Segment[];
+  children: React.ReactNode;
 }) {
-  const total = segments.reduce((s, x) => s + x.value, 0);
-  const pct = (v: number) => (total > 0 ? (v / total) * 100 : 0);
-
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-        <p className="text-xs text-slate-400">{subtitle}</p>
-      </div>
-
-      {total === 0 ? (
-        <p className="py-6 text-center text-xs text-slate-400">No data yet.</p>
-      ) : (
-        <>
-          {/* multicolor stacked bar */}
-          <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100">
-            {segments.map((s) => (
-              <div
-                key={s.label}
-                style={{ width: `${pct(s.value)}%`, backgroundColor: s.color }}
-                title={`${s.label}: ${formatCompact(s.value)} (${formatPercent(
-                  pct(s.value)
-                )})`}
-              />
-            ))}
-          </div>
-
-          {/* legend */}
-          <ul className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
-            {segments.map((s) => (
-              <li
-                key={s.label}
-                className="flex items-center gap-2 text-xs text-slate-600"
-              >
-                <span
-                  className="h-2.5 w-2.5 flex-shrink-0 rounded-sm"
-                  style={{ backgroundColor: s.color }}
-                />
-                <span className="flex-1 truncate" title={s.label}>
-                  {s.label}
-                  {s.meta && (
-                    <span className="text-slate-400"> · {s.meta}</span>
-                  )}
-                </span>
-                <span className="tabular-nums font-medium text-slate-700">
-                  {formatCompact(s.value)}
-                </span>
-                <span className="w-10 text-right tabular-nums text-slate-400">
-                  {formatPercent(pct(s.value))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+      <p className="mt-0.5 text-xs text-slate-400">{subtitle}</p>
+      <div className="mt-4">{children}</div>
     </div>
   );
 }
 
-export function DataAnalysis({ posts }: { posts: PostRow[] }) {
-  const byInfluencer = aggregate(
-    posts,
-    (p) => p.influencer_name,
-    (p) => p.total_interactions ?? 0
+/** Ranked horizontal bars — magnitude comparison across labelled rows. */
+function RankedBars({ rows }: { rows: Row[] }) {
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  const max = Math.max(1, ...rows.map((r) => r.value));
+
+  if (total === 0) {
+    return <p className="py-6 text-center text-xs text-slate-400">No data yet.</p>;
+  }
+
+  return (
+    <ul className="space-y-3">
+      {rows.map((r) => (
+        <li key={r.label}>
+          <div className="flex items-baseline justify-between gap-3 text-xs">
+            <span className="flex min-w-0 items-center gap-2 text-slate-600">
+              <span
+                className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                style={{ backgroundColor: r.color }}
+              />
+              <span
+                className="min-w-0 truncate font-medium text-slate-700"
+                title={r.label}
+              >
+                {r.label}
+              </span>
+              <span className="flex-shrink-0 text-slate-400">
+                {r.count} post{r.count === 1 ? "" : "s"}
+              </span>
+            </span>
+            <span className="flex-shrink-0 tabular-nums text-slate-500">
+              <span className="font-semibold text-slate-800">
+                {formatCompact(r.value)}
+              </span>{" "}
+              · {formatPercent((r.value / total) * 100)}
+            </span>
+          </div>
+          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.max(2, (r.value / max) * 100)}%`,
+                backgroundColor: r.color,
+              }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
-  const byPlatform = aggregate(
-    posts,
-    (p) => PLATFORM_LABELS[p.platform] ?? p.platform,
-    (p) => p.total_interactions ?? 0
+}
+
+/** 100% stacked bar — part-to-whole composition. */
+function StackedBar({ rows }: { rows: Row[] }) {
+  const total = rows.reduce((s, r) => s + r.value, 0);
+
+  if (total === 0) {
+    return <p className="py-6 text-center text-xs text-slate-400">No data yet.</p>;
+  }
+
+  return (
+    <>
+      <div className="flex h-3.5 w-full gap-[3px]">
+        {rows.map((r) =>
+          r.value > 0 ? (
+            <div
+              key={r.label}
+              className="h-full rounded-full first:rounded-l-full last:rounded-r-full"
+              style={{
+                width: `${(r.value / total) * 100}%`,
+                minWidth: 6,
+                backgroundColor: r.color,
+              }}
+              title={`${r.label}: ${formatCompact(r.value)}`}
+            />
+          ) : null
+        )}
+      </div>
+      <ul className="mt-4 space-y-2">
+        {rows.map((r) => (
+          <li
+            key={r.label}
+            className="flex items-center gap-2 text-xs text-slate-600"
+          >
+            <span
+              className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+              style={{ backgroundColor: r.color }}
+            />
+            <span className="flex-1 font-medium text-slate-700">{r.label}</span>
+            <span className="tabular-nums font-semibold text-slate-800">
+              {formatCompact(r.value)}
+            </span>
+            <span className="w-12 text-right tabular-nums text-slate-400">
+              {formatPercent((r.value / total) * 100)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+export function DataAnalysis({ posts }: { posts: PostRow[] }) {
+  const totalInteractions = posts.reduce(
+    (s, p) => s + (p.total_interactions ?? 0),
+    0
   );
 
-  // interaction composition across all shown posts
-  const composition: Segment[] = [
-    {
-      label: "Likes",
-      value: posts.reduce((s, p) => s + (p.likes ?? 0), 0),
-      color: "#db2777",
-    },
-    {
-      label: "Comments",
-      value: posts.reduce((s, p) => s + (p.comments_count ?? 0), 0),
-      color: "#2563eb",
-    },
-    {
-      label: "Shares",
-      value: posts.reduce((s, p) => s + (p.share_count ?? 0), 0),
-      color: "#059669",
-    },
+  const byInfluencer = aggregate(posts, (p) => p.influencer_name, null);
+  const byPlatform = aggregate(
+    posts,
+    (p) => PLATFORM[p.platform]?.label ?? p.platform,
+    (label) =>
+      Object.values(PLATFORM).find((x) => x.label === label)?.color ?? OTHER
+  );
+
+  const composition: Row[] = [
+    { label: "Likes", value: posts.reduce((s, p) => s + (p.likes ?? 0), 0), count: 0, color: "#e87ba4" },
+    { label: "Comments", value: posts.reduce((s, p) => s + (p.comments_count ?? 0), 0), count: 0, color: "#2a78d6" },
+    { label: "Shares", value: posts.reduce((s, p) => s + (p.share_count ?? 0), 0), count: 0, color: "#008300" },
   ];
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-semibold text-slate-900">Data Analysis</h2>
         <span className="text-xs text-slate-400">
-          Breakdown of {posts.length} post{posts.length === 1 ? "" : "s"} ·
-          reflects current filters
+          {formatCompact(totalInteractions)} interactions across {posts.length}{" "}
+          post{posts.length === 1 ? "" : "s"} · reflects current filters
         </span>
       </div>
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <BreakdownBar
-          title="Interactions by influencer"
-          subtitle="Who drove the most engagement"
-          segments={byInfluencer}
-        />
-        <BreakdownBar
-          title="Interactions by platform"
-          subtitle="Instagram vs Facebook vs TikTok"
-          segments={byPlatform}
-        />
-        <BreakdownBar
-          title="Interaction composition"
-          subtitle="Likes vs comments vs shares"
-          segments={composition}
-        />
-      </div>
+
+      {posts.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+          No posts to analyze yet.
+        </div>
+      ) : (
+        <>
+          <Panel
+            title="Interactions by influencer"
+            subtitle="Who drove the most engagement"
+          >
+            <RankedBars rows={byInfluencer} />
+          </Panel>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Panel
+              title="Interactions by platform"
+              subtitle="Where engagement came from"
+            >
+              <RankedBars rows={byPlatform} />
+            </Panel>
+            <Panel
+              title="Interaction composition"
+              subtitle="Likes vs comments vs shares"
+            >
+              <StackedBar rows={composition} />
+            </Panel>
+          </div>
+        </>
+      )}
     </section>
   );
 }
