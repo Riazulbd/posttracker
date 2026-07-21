@@ -37,9 +37,11 @@ export const env = {
   ),
   tiktokActor: optional("APIFY_TIKTOK_ACTOR", "clockworks/tiktok-scraper"),
   facebookActor: optional("APIFY_FACEBOOK_ACTOR", "apify/facebook-posts-scraper"),
-  // Posts pulled per account per run. Apify charges per post (~$1.70/1000),
-  // so keep this low — accounts rarely post >10 times between Mon and Fri.
-  resultsLimit: Number(optional("APIFY_RESULTS_LIMIT", "10")) || 10,
+  // Posts pulled per account per run. Apify charges per post (~$1.70/1000).
+  // This is the fetch window we scan for the tracked keyword, so it must be
+  // wide enough to cover everything an account posts between two scrapes —
+  // otherwise a campaign post can fall out of range before it's ever checked.
+  resultsLimit: Number(optional("APIFY_RESULTS_LIMIT", "25")) || 25,
   facebookResultsLimit: Number(optional("APIFY_FACEBOOK_RESULTS_LIMIT", "20")) || 20,
   actorWaitSecs: Number(optional("APIFY_ACTOR_WAIT_SECS", "240")) || 240,
   // The IG profile scraper is pricey (~$2.60/100 profiles). Only refresh an
