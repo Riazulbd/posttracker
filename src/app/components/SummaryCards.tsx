@@ -1,4 +1,10 @@
-import { formatCompact, formatNumber, formatPercent } from "@/lib/format";
+import {
+  formatCompact,
+  formatDateTime,
+  formatNumber,
+  formatPercent,
+  formatRelative,
+} from "@/lib/format";
 import type { DashboardData } from "../data";
 
 function Card({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -15,7 +21,9 @@ function Card({ label, value, sub }: { label: string; value: string; sub?: strin
 
 export function SummaryCards({ summary }: { summary: DashboardData["summary"] }) {
   const lastScraped = summary.lastScrapedAt
-    ? new Date(summary.lastScrapedAt).toLocaleString("en-US")
+    ? `${formatDateTime(summary.lastScrapedAt)} · ${formatRelative(
+        summary.lastScrapedAt
+      )}`
     : "never";
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
