@@ -1,5 +1,7 @@
 import { formatCompact, formatPercent } from "@/lib/format";
 import type { PostRow } from "@/lib/types";
+import { EngagementTrendChart, type TrendPoint } from "./EngagementTrendChart";
+import { PostTypeDonut, type DonutSlice } from "./PostTypeDonut";
 
 // Validated categorical palette (dataviz skill, light surface), fixed order.
 const SERIES = [
@@ -61,6 +63,30 @@ function aggregate(
     });
   }
   return rows;
+}
+
+/** Total interactions per day, sorted chronologically, for trending. */
+function buildTrend(posts: PostRow[]): TrendPoint[] {
+  const totals = new Map<string, number>();
+  for (const p of posts) {
+    if (!p.post_date) continue;
+    totals.set(p.post_date, (totals.get(p.post_date) ?? 0) + (p.total_interactions ?? 0));
+  }
+  return [...totals.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, value]) => ({ date, value }));
+}
+
+/** Post count per type, colored by rank, for the donut. */
+function buildPostTypeSlices(posts: PostRow[]): DonutSlice[] {
+  const counts = new Map<string, number>();
+  for (const p of posts) {
+    const key = p.post_type || "Other";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, count], i) => ({ label, count, color: SERIES[i % SERIES.length] }));
 }
 
 function Panel({
@@ -195,6 +221,8 @@ export function DataAnalysis({ posts }: { posts: PostRow[] }) {
     (label) =>
       Object.values(PLATFORM).find((x) => x.label === label)?.color ?? OTHER
   );
+  const trend = buildTrend(posts);
+  const postTypeSlices = buildPostTypeSlices(posts);
 
   const composition: Row[] = [
     { label: "Likes", value: posts.reduce((s, p) => s + (p.likes ?? 0), 0), count: 0, color: "#e87ba4" },
@@ -219,13 +247,20 @@ export function DataAnalysis({ posts }: { posts: PostRow[] }) {
       ) : (
         <>
           <Panel
+            title="Interactions over time"
+            subtitle="Total engagement trended by post date"
+          >
+            <EngagementTrendChart data={trend} />
+          </Panel>
+
+          <Panel
             title="Interactions by influencer"
             subtitle="Who drove the most engagement"
           >
             <RankedBars rows={byInfluencer} />
           </Panel>
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <Panel
               title="Interactions by platform"
               subtitle="Where engagement came from"
@@ -237,6 +272,9 @@ export function DataAnalysis({ posts }: { posts: PostRow[] }) {
               subtitle="Likes vs comments vs shares"
             >
               <StackedBar rows={composition} />
+            </Panel>
+            <Panel title="Post type mix" subtitle="Share of posts by format">
+              <PostTypeDonut slices={postTypeSlices} />
             </Panel>
           </div>
         </>
