@@ -14,7 +14,7 @@ async function runScrape(trigger: string) {
   const startedAt = new Date();
   console.log(`[worker] scrape started (${trigger}) at ${startedAt.toISOString()}`);
   try {
-    const results = await scrapeAllAccounts();
+    const results = await scrapeAllAccounts(undefined, "cron");
     const totals = results.reduce(
       (acc, r) => {
         acc.scanned += r.scanned;

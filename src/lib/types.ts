@@ -57,4 +57,5 @@ export interface ScrapeResult {
   inserted: number; // new posts added
   updated: number; // existing posts whose stats were refreshed
   error?: string;
+  warning?: string; // non-fatal issue (e.g. partial results from a slow actor)
 }

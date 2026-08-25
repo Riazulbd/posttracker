@@ -163,6 +163,7 @@ function applyProgress(status: ScrapeJobStatus, event: ScrapeProgressEvent) {
       inserted: event.inserted,
       updated: event.updated,
       error: event.error,
+      warning: event.warning,
     };
     status.results = [
       ...status.results.filter((result) => result.account !== event.account),
@@ -204,7 +205,7 @@ export async function startScrapeJob(): Promise<ScrapeJobStatus> {
       const results = await scrapeAllAccounts((event) => {
         applyProgress(status, event);
         void persistStatus(snapshot(status));
-      });
+      }, "manual");
       status.results = results;
       status.scanned = results.reduce((sum, result) => sum + result.scanned, 0);
       status.matched = results.reduce((sum, result) => sum + result.matched, 0);

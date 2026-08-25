@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "./supabase";
 import { env } from "./env";
+import { matchableText } from "./mappers";
 import type { NormalizedPost } from "./types";
 
 /**
@@ -76,7 +77,15 @@ export async function replaceTrackedKeywords(keywords: string[]): Promise<string
 }
 
 /**
- * True if the post's caption or hashtags mention any tracked keyword.
+ * True if the post mentions any tracked keyword.
+ *
+ * Matching runs over the caption, the hashtags AND the usernames the post
+ * references without naming in the text — @-mentions, tagged users, collab
+ * co-authors (see `matchableText`). Caption-only matching used to drop any
+ * post where the creator tagged the brand instead of typing the hashtag; those
+ * posts were counted as "scanned" and then discarded with no trace, which is
+ * exactly how tracked posts went missing.
+ *
  * When no keywords are configured, every post is kept.
  */
 export function postMatchesKeywords(
@@ -85,8 +94,9 @@ export function postMatchesKeywords(
 ): boolean {
   if (keywords.length === 0) return true;
 
-  const haystack = normalize(
-    [post.caption ?? "", ...(post.hashtags ?? [])].join(" ")
-  );
-  return keywords.some((kw) => haystack.includes(normalize(kw)));
+  const haystack = normalize(matchableText(post));
+  return keywords.some((kw) => {
+    const needle = normalize(kw);
+    return needle !== "" && haystack.includes(needle);
+  });
 }

@@ -71,6 +71,61 @@ function extractHashtags(item: Raw, caption: string | null): string[] {
   return [...tags];
 }
 
+/**
+ * Usernames a post references but that never appear in the caption text:
+ * @-mentions parsed out by the actor, tagged/collab users, and the sponsor
+ * fields some actors expose. A creator who *tags* the brand instead of typing
+ * the hashtag would otherwise fail the keyword filter and be dropped silently.
+ */
+function extractMentions(item: Raw): string[] {
+  const out = new Set<string>();
+
+  const add = (value: unknown) => {
+    if (typeof value === "string") {
+      const s = value.trim().replace(/^@/, "");
+      if (s) out.add(s);
+    } else if (value && typeof value === "object") {
+      const o = value as Raw;
+      for (const key of ["username", "name", "full_name", "fullName", "title"]) {
+        if (typeof o[key] === "string") add(o[key]);
+      }
+    }
+  };
+
+  const sources = [
+    "mentions",
+    "taggedUsers",
+    "tagged_users",
+    "usertags",
+    "coauthorProducers",
+    "sponsorUsers",
+    "musicInfo.artist_name",
+    "locationName",
+    "location.name",
+    "title",
+    "alt",
+  ];
+  for (const key of sources) {
+    const value = pick(item, [key]);
+    if (Array.isArray(value)) value.forEach(add);
+    else add(value);
+  }
+  return [...out];
+}
+
+/**
+ * Everything a keyword may legitimately be found in, for one post. Kept next
+ * to the field mappings because it depends on actor-specific keys, and read by
+ * keywords.ts via the stored `raw` item.
+ */
+export function matchableText(post: NormalizedPost): string {
+  const parts: string[] = [post.caption ?? "", ...(post.hashtags ?? [])];
+  if (post.raw && typeof post.raw === "object") {
+    parts.push(...extractMentions(post.raw as Raw));
+  }
+  return parts.join(" ");
+}
+
 // ── Instagram ───────────────────────────────────────────────────────────
 function instagramPostType(item: Raw): string {
   const productType = String(pick(item, ["productType"]) ?? "").toLowerCase();
@@ -82,8 +137,23 @@ function instagramPostType(item: Raw): string {
   return "Post";
 }
 
+/**
+ * Instagram's stable identifier is the post shortcode. Build the canonical
+ * permalink from it and only fall back to the actor-supplied URL.
+ *
+ * `inputUrl` is deliberately NOT consulted: on apify/instagram-post-scraper it
+ * is the *profile* URL that was passed in, so every item missing `url` would
+ * collapse onto the same key — corrupting dedup and making the batch upsert
+ * fail outright (Postgres rejects two conflicting rows in one statement).
+ */
+function instagramStableUrl(item: Raw): string | null {
+  const shortCode = toText(pick(item, ["shortCode", "shortcode", "code"]));
+  if (shortCode) return `https://www.instagram.com/p/${shortCode}/`;
+  return toText(pick(item, ["url", "postUrl"]));
+}
+
 function mapInstagram(item: Raw, fallbackFollowers: number | null): NormalizedPost | null {
-  const post_url = toText(pick(item, ["url", "postUrl", "inputUrl"]));
+  const post_url = instagramStableUrl(item);
   if (!post_url) return null;
 
   const caption = toText(
@@ -114,10 +184,29 @@ function mapInstagram(item: Raw, fallbackFollowers: number | null): NormalizedPo
 }
 
 // ── TikTok ──────────────────────────────────────────────────────────────
-function mapTiktok(item: Raw, fallbackFollowers: number | null): NormalizedPost | null {
-  const post_url = toText(
-    pick(item, ["webVideoUrl", "postPage", "url", "videoUrl"])
+/**
+ * TikTok's stable identifier is the numeric video id.
+ *
+ * `videoUrl` is deliberately NOT consulted: it is a signed CDN address that
+ * rotates between scrapes, so using it as the dedup key re-inserted the same
+ * video as a brand-new post on every run.
+ */
+function tiktokStableUrl(item: Raw): string | null {
+  const direct = toText(pick(item, ["webVideoUrl", "postPage"]));
+  if (direct) return direct;
+
+  const id = toText(pick(item, ["id", "awemeId", "videoId"]));
+  const author = toText(
+    pick(item, ["authorMeta.name", "authorMeta.uniqueId", "author.uniqueId"])
   );
+  if (id && author) return `https://www.tiktok.com/@${author}/video/${id}`;
+
+  const url = toText(pick(item, ["url"]));
+  return url && !/\.mp4|tiktokcdn/i.test(url) ? url : null;
+}
+
+function mapTiktok(item: Raw, fallbackFollowers: number | null): NormalizedPost | null {
+  const post_url = tiktokStableUrl(item);
   if (!post_url) return null;
 
   const caption = toText(pick(item, ["text", "desc", "description", "caption"]));

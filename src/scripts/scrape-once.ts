@@ -9,7 +9,7 @@ import { scrapeAllAccounts } from "../lib/scrape";
 
 async function main() {
   console.log("[scrape-once] starting one-off scrape...");
-  const results = await scrapeAllAccounts();
+  const results = await scrapeAllAccounts(undefined, "script");
   console.table(results);
   const hadError = results.some((r) => r.error);
   process.exit(hadError ? 1 : 0);

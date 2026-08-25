@@ -42,6 +42,15 @@ export function SummaryCards({ summary }: { summary: DashboardData["summary"] })
         value={formatNumber(summary.accountsTracked)}
         sub={`Last scrape: ${lastScraped}`}
       />
+      {summary.lastRunError ? (
+        <div className="col-span-2 rounded-xl border border-red-200 bg-red-50 p-4 text-xs text-red-700 sm:col-span-3 lg:col-span-5">
+          <span className="font-semibold">
+            A scrape ran {formatDateTime(summary.lastAttemptedAt)} but didn&apos;t
+            complete successfully:
+          </span>{" "}
+          {summary.lastRunError}
+        </div>
+      ) : null}
     </div>
   );
 }
