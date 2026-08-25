@@ -33,6 +33,18 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Like toNumber, but for counts that can never legitimately be negative
+ * (likes, comments, shares, views, followers). Some actors return -1 as a
+ * sentinel for "this platform hid the count", which otherwise flows straight
+ * into the dashboard as a negative number. Clamp it to 0 instead; keep null
+ * as null so it still renders as "—" rather than a false zero.
+ */
+function toCount(value: unknown): number | null {
+  const n = toNumber(value);
+  return n === null ? null : Math.max(0, n);
+}
+
 function toIsoDate(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   let date: Date;
@@ -160,7 +172,7 @@ function mapInstagram(item: Raw, fallbackFollowers: number | null): NormalizedPo
     pick(item, ["caption", "description", "text", "edge_media_to_caption.edges.0.node.text"])
   );
   const followers =
-    toNumber(pick(item, ["followersCount", "ownerFollowersCount", "owner.followersCount"])) ??
+    toCount(pick(item, ["followersCount", "ownerFollowersCount", "owner.followersCount"])) ??
     fallbackFollowers;
 
   return {
@@ -170,13 +182,13 @@ function mapInstagram(item: Raw, fallbackFollowers: number | null): NormalizedPo
     caption,
     post_type: instagramPostType(item),
     hashtags: extractHashtags(item, caption),
-    video_plays: toNumber(
+    video_plays: toCount(
       pick(item, ["videoPlayCount", "videoViewCount", "playCount", "viewCount"])
     ),
     follower_count: followers,
-    comments_count: toNumber(pick(item, ["commentsCount", "commentCount"])),
+    comments_count: toCount(pick(item, ["commentsCount", "commentCount"])),
     share_count: null, // Instagram does not expose share counts publicly
-    likes: toNumber(pick(item, ["likesCount", "likeCount"])),
+    likes: toCount(pick(item, ["likesCount", "likeCount"])),
     post_date: toIsoDate(pick(item, ["timestamp", "takenAtTimestamp", "createTime"])),
     data_date: toIsoDate(Date.now()),
     raw: item,
@@ -211,7 +223,7 @@ function mapTiktok(item: Raw, fallbackFollowers: number | null): NormalizedPost 
 
   const caption = toText(pick(item, ["text", "desc", "description", "caption"]));
   const followers =
-    toNumber(pick(item, ["authorMeta.fans", "authorMeta.followers", "fans"])) ??
+    toCount(pick(item, ["authorMeta.fans", "authorMeta.followers", "fans"])) ??
     fallbackFollowers;
 
   return {
@@ -222,11 +234,11 @@ function mapTiktok(item: Raw, fallbackFollowers: number | null): NormalizedPost 
     caption,
     post_type: "Video",
     hashtags: extractHashtags(item, caption),
-    video_plays: toNumber(pick(item, ["playCount", "viewCount"])),
+    video_plays: toCount(pick(item, ["playCount", "viewCount"])),
     follower_count: followers,
-    comments_count: toNumber(pick(item, ["commentCount", "comments"])),
-    share_count: toNumber(pick(item, ["shareCount", "shares"])),
-    likes: toNumber(pick(item, ["diggCount", "likeCount", "likes"])),
+    comments_count: toCount(pick(item, ["commentCount", "comments"])),
+    share_count: toCount(pick(item, ["shareCount", "shares"])),
+    likes: toCount(pick(item, ["diggCount", "likeCount", "likes"])),
     post_date: toIsoDate(pick(item, ["createTimeISO", "createTime", "timestamp"])),
     data_date: toIsoDate(Date.now()),
     raw: item,
@@ -293,17 +305,17 @@ function mapFacebook(item: Raw, fallbackFollowers: number | null): NormalizedPos
     caption,
     post_type: toText(pick(item, ["type", "mediaType", "postType"])) ?? "Post",
     hashtags: extractHashtags(item, caption),
-    video_plays: toNumber(
+    video_plays: toCount(
       pick(item, ["videoViewCount", "viewCount", "viewsCount", "statistics.views"])
     ),
     follower_count: fallbackFollowers,
-    comments_count: toNumber(
+    comments_count: toCount(
       pick(item, ["comments", "commentsCount", "commentCount", "statistics.comments"])
     ),
-    share_count: toNumber(
+    share_count: toCount(
       pick(item, ["shares", "sharesCount", "shareCount", "statistics.shares"])
     ),
-    likes: toNumber(
+    likes: toCount(
       pick(item, [
         "likes",
         "likesCount",
