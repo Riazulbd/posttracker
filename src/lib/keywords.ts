@@ -79,12 +79,13 @@ export async function replaceTrackedKeywords(keywords: string[]): Promise<string
 /**
  * True if the post mentions any tracked keyword.
  *
- * Matching runs over the caption, the hashtags AND the usernames the post
- * references without naming in the text — @-mentions, tagged users, collab
- * co-authors (see `matchableText`). Caption-only matching used to drop any
- * post where the creator tagged the brand instead of typing the hashtag; those
- * posts were counted as "scanned" and then discarded with no trace, which is
- * exactly how tracked posts went missing.
+ * Matching runs over the caption, the hashtags, the usernames the post
+ * references without naming in the text (@-mentions, tagged users, collab
+ * co-authors), carousel-slide text, and comments written by the post owner
+ * (see `matchableText`). Fan comments are not searched. Caption-only matching
+ * used to drop any post where the creator tagged the brand instead of typing
+ * the hashtag; those posts were counted as "scanned" and then discarded with
+ * no trace, which is exactly how tracked posts went missing.
  *
  * When no keywords are configured, every post is kept.
  */

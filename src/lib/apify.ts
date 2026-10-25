@@ -40,10 +40,13 @@ export async function runActor(
   }
 
   const items = run.defaultDatasetId
-    ? ((await apify.dataset(run.defaultDatasetId).listItems()).items as Record<
-        string,
-        unknown
-      >[])
+    ? ((
+        await apify.dataset(run.defaultDatasetId).listItems({
+          // The client default page is large enough for the usual 25-post
+          // window, but pin it so a smaller default cannot drop the tail.
+          limit: Math.max(1000, env.resultsLimit, env.facebookResultsLimit),
+        })
+      ).items as Record<string, unknown>[])
     : [];
 
   if (run.status === "SUCCEEDED") return { items };
@@ -89,6 +92,19 @@ export async function fetchInstagramFollowers(
 }
 
 /**
+ * apify/instagram-post-scraper accepts a handle, an @handle, or a profile URL
+ * and collapses duplicates itself. Seed rows are plain handles; normalize so a
+ * pasted "@name" or surrounding whitespace still resolves.
+ */
+function instagramTargets(username: string): string[] {
+  const trimmed = username.trim();
+  const handle = trimmed.replace(/^@+/, "");
+  if (!handle) return [];
+  if (/^https?:\/\//i.test(handle)) return [handle];
+  return [handle, `https://www.instagram.com/${handle}/`];
+}
+
+/**
  * Build the actor input for an account. These inputs target the default
  * actors (apify/instagram-post-scraper, clockworks/tiktok-scraper, and
  * apify/facebook-posts-scraper). If you swap actors, adjust the input shape here and the field mapping in
@@ -101,13 +117,19 @@ export function buildActorInput(
   const limit = env.resultsLimit;
 
   if (platform === "instagram") {
-    // Default actor: apify/instagram-post-scraper, which takes a list of
-    // usernames and returns their recent posts.
+    // Default actor: apify/instagram-post-scraper.
+    // detailedData is what returns tagged users, collab coauthors, alt text,
+    // carousel children, and the comment sample. basicData omits those, and
+    // the actor's own examples pass basicData, so a run that follows the
+    // example drops a campaign post that only *tags* the brand. Ask for
+    // detailedData explicitly. It costs one extra post-details request per
+    // post; both levels are still one saved row.
     return {
       actorId: env.instagramActor,
       input: {
-        username: [username],
+        username: instagramTargets(username),
         resultsLimit: limit,
+        dataDetailLevel: "detailedData",
       },
     };
   }

@@ -83,6 +83,12 @@ function extractHashtags(item: Raw, caption: string | null): string[] {
   return [...tags];
 }
 
+function handleOf(value: unknown): string | null {
+  const text = toText(value);
+  if (!text) return null;
+  return text.replace(/^@+/, "").toLowerCase();
+}
+
 /**
  * Usernames a post references but that never appear in the caption text:
  * @-mentions parsed out by the actor, tagged/collab users, and the sponsor
@@ -92,15 +98,17 @@ function extractHashtags(item: Raw, caption: string | null): string[] {
 function extractMentions(item: Raw): string[] {
   const out = new Set<string>();
 
-  const add = (value: unknown) => {
+  const add = (value: unknown, depth = 0) => {
     if (typeof value === "string") {
       const s = value.trim().replace(/^@/, "");
       if (s) out.add(s);
     } else if (value && typeof value === "object") {
       const o = value as Raw;
       for (const key of ["username", "name", "full_name", "fullName", "title"]) {
-        if (typeof o[key] === "string") add(o[key]);
+        if (typeof o[key] === "string") add(o[key], depth + 1);
       }
+      // Graph-style tags nest the account under `user` instead of a flat username.
+      if (depth < 2 && o.user && typeof o.user === "object") add(o.user, depth + 1);
     }
   };
 
@@ -125,6 +133,144 @@ function extractMentions(item: Raw): string[] {
   return [...out];
 }
 
+/** The account that published the post, when the actor named one. */
+function postOwnerHandle(item: Raw): string | null {
+  return handleOf(
+    pick(item, [
+      "ownerUsername",
+      "owner.username",
+      "authorMeta.uniqueId",
+      "author.uniqueId",
+      "authorMeta.name",
+    ])
+  );
+}
+
+function commentOwnerHandle(comment: Raw): string | null {
+  return handleOf(
+    pick(comment, ["ownerUsername", "owner.username", "user.username", "username"])
+  );
+}
+
+/**
+ * Caption text the creator put in their own comment (common on Reels) rather
+ * than the post caption. Fan comments are ignored: `firstComment` is only a
+ * string, usually from someone else, and matching it would keep unrelated posts.
+ */
+function ownerCommentText(item: Raw, fallbackOwner: string | null): string[] {
+  const owner = postOwnerHandle(item) ?? handleOf(fallbackOwner);
+  if (!owner) return [];
+
+  const texts: string[] = [];
+  const visit = (comment: unknown) => {
+    if (!comment || typeof comment !== "object") return;
+    const row = comment as Raw;
+    if (commentOwnerHandle(row) === owner) {
+      const text = toText(pick(row, ["text", "comment", "body"]));
+      if (text) texts.push(text);
+    }
+    if (Array.isArray(row.replies)) row.replies.forEach(visit);
+  };
+
+  for (const key of ["latestComments", "comments"]) {
+    const list = item[key];
+    if (Array.isArray(list)) list.forEach(visit);
+  }
+  return texts;
+}
+
+/** Carousel slides often carry the campaign hashtag on a child, not the parent. */
+function childMatchableText(item: Raw): string[] {
+  const parts: string[] = [];
+  for (const key of ["childPosts", "carouselMedia", "sidecarChildren"]) {
+    const list = item[key];
+    if (!Array.isArray(list)) continue;
+    for (const child of list) {
+      if (!child || typeof child !== "object") continue;
+      const row = child as Raw;
+      const caption = toText(
+        pick(row, ["caption", "text", "accessibility_caption", "alt"])
+      );
+      if (caption) parts.push(caption);
+      parts.push(...extractHashtags(row, caption));
+      parts.push(...extractMentions(row));
+    }
+  }
+  return parts;
+}
+
+/**
+ * Text of an Apify error row, when this item is a failure instead of a post.
+ * Successful posts are not error rows even if some other field happens to be
+ * named similarly: a real post always carries a stable media id.
+ */
+function actorErrorText(item: Raw): string | null {
+  const description = toText(pick(item, ["errorDescription", "errorMessage"]));
+  const error = item.error;
+  let message: string | null = null;
+  if (typeof error === "string" && error.trim()) message = error.trim();
+  else if (error && typeof error === "object") {
+    message = toText(
+      pick(error as Raw, ["message", "description", "errorDescription"])
+    );
+  }
+  if (message && description && description !== message) {
+    return `${message}: ${description}`;
+  }
+  return message ?? description;
+}
+
+function hasStableMediaId(item: Raw): boolean {
+  return Boolean(
+    toText(
+      pick(item, [
+        "shortCode",
+        "shortcode",
+        "code",
+        "awemeId",
+        "postId",
+        "post_id",
+        "videoId",
+      ])
+    )
+  );
+}
+
+/** True when the dataset row is an actor failure and not a post. */
+function isErrorOnlyItem(item: Raw): boolean {
+  return Boolean(actorErrorText(item)) && !hasStableMediaId(item);
+}
+
+export interface ActorItemIssue {
+  /** Every returned row failed. The account scrape should be recorded as an error. */
+  fatal?: string;
+  /** Some rows failed and some posts were still usable. */
+  warning?: string;
+}
+
+/**
+ * Tell a failed scrape apart from a profile that simply has no matching posts.
+ * An error-only dataset used to map to zero posts and still advance
+ * last_scraped_at, so the dashboard showed a successful scrape of nothing.
+ */
+export function actorItemIssue(items: Raw[], mappedCount: number): ActorItemIssue {
+  const errors = items
+    .filter(isErrorOnlyItem)
+    .map((item) => actorErrorText(item))
+    .filter((message): message is string => Boolean(message));
+  if (errors.length === 0) return {};
+
+  const sample = errors[0];
+  if (mappedCount === 0) {
+    return {
+      fatal: `Apify returned ${errors.length} error row(s) and no posts: ${sample}`,
+    };
+  }
+  return {
+    warning: `Apify returned ${errors.length} error row(s) alongside ${mappedCount} post(s): ${sample}`,
+  };
+}
+
 /**
  * Everything a keyword may legitimately be found in, for one post. Kept next
  * to the field mappings because it depends on actor-specific keys, and read by
@@ -133,7 +279,10 @@ function extractMentions(item: Raw): string[] {
 export function matchableText(post: NormalizedPost): string {
   const parts: string[] = [post.caption ?? "", ...(post.hashtags ?? [])];
   if (post.raw && typeof post.raw === "object") {
-    parts.push(...extractMentions(post.raw as Raw));
+    const raw = post.raw as Raw;
+    parts.push(...extractMentions(raw));
+    parts.push(...ownerCommentText(raw, post.influencer_name));
+    parts.push(...childMatchableText(raw));
   }
   return parts.join(" ");
 }
@@ -342,6 +491,7 @@ export function mapItems(
   expectedUsername: string
 ): NormalizedPost[] {
   const mapped = items
+    .filter((item) => !isErrorOnlyItem(item))
     .map((item) =>
       platform === "instagram"
         ? mapInstagram(item, fallbackFollowers)

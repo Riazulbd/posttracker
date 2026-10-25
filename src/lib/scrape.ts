@@ -6,7 +6,7 @@ import {
 } from "./apify";
 import { env } from "./env";
 import { getTrackedKeywords, postMatchesKeywords } from "./keywords";
-import { mapItems } from "./mappers";
+import { actorItemIssue, mapItems } from "./mappers";
 import type {
   NormalizedPost,
   Platform,
@@ -110,8 +110,13 @@ async function scrapeAccount(
   }
 
   const { actorId, input } = buildActorInput(platform, account.username);
-  const { items, warning } = await runActor(actorId, input);
+  const { items, warning: runWarning } = await runActor(actorId, input);
   const allPosts = mapItems(platform, items, followerCount, account.username);
+  const issue = actorItemIssue(items, allPosts.length);
+  if (issue.fatal) throw new Error(issue.fatal);
+  const warning =
+    [runWarning, issue.warning].filter((part): part is string => Boolean(part)).join(" ") ||
+    undefined;
 
   // TikTok items carry the follower count themselves; capture it for caching.
   if (platform === "tiktok") {
